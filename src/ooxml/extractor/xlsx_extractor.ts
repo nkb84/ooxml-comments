@@ -150,7 +150,8 @@ export class XlsxExtractor implements Extractor {
 
     switch (contentType) {
       case ContentType.EXCEL_PERSON: return this.loadPersons(data); break;
-      case ContentType.EXCEL_THREADED_COMMENT: return this.loadComments(partName, data); break;
+      case ContentType.EXCEL_THREADED_COMMENT: return this.loadThreadedComments(partName, data); break;
+      case ContentType.EXCEL_COMMENT: return this.loadComments(partName, data); break;
       case ContentType.RELATION: return this.loadRelations(partName, data); break;
       default:
         break;
@@ -205,7 +206,7 @@ export class XlsxExtractor implements Extractor {
         // sheet
         const relations = doc.getElementsByTagName('Relationship')
         for (let i = 0; i < relations.length; i++) {
-          if (relations[i].getAttribute('Type') === Relation.THREADED_COMMENT) {
+          if ([Relation.THREADED_COMMENT, Relation.COMMENT].includes(relations[i].getAttribute('Type') || "")) {
             const ttarget = (relations[i].getAttribute('Target') || "").replace('\\', '/')
             // sheet folder
             const paths = partName.split('/')
@@ -245,7 +246,7 @@ export class XlsxExtractor implements Extractor {
 
       // Update location for comment
       const sheet = this.sheets[sname]
-      c.location = sname
+      c.location = sname + ': ' + c.ref
       if (c.parentId === "") {
         // This is a root object
         sheet.threadedComments.push(c)
@@ -269,6 +270,49 @@ export class XlsxExtractor implements Extractor {
   }
 
   private loadComments(partName: string, content: string): boolean {
+    const parser = Parser.getInstance()
+    const authors: string[] = []
+
+    try {
+      const doc = parser.parseFromString(content)
+
+      // Get author list
+      const authorList = doc.getElementsByTagName('author')
+      for (let i = 0; i < authorList.length; i++) {
+        authors.push(authorList[i].textContent || "")
+      }
+
+      // Get comment list
+      const commentList = doc.getElementsByTagName('comment')
+      const date = new Date()
+      const id0 = (new Date()).getTime()
+      for (let i = 0; i < commentList.length; i++) {
+        const element = commentList[i]
+        // No need id, since not threaded
+        const id = (id0 + i).toString()
+        const authorIdx = parseInt(element.getAttribute('authorId') || "")
+        this.comments[id] = new ThreadedComment(
+                      id,
+                      element.getAttribute('ref') || "",
+                      date.toLocaleString(), // no date time, get current
+                      authorIdx < authors.length ? authors[authorIdx] : "",
+                      "", // no parent
+                      false,
+                      element.textContent || ""
+                    )
+          this.comments[id].partName = partName
+      }
+
+      // Thread comment need to be loaded last
+      // this.updateThreadComments()
+    } catch (e) {
+      console.log(e)
+    }
+
+    return true
+  }
+
+  private loadThreadedComments(partName: string, content: string): boolean {
     const parser = Parser.getInstance()
 
     try {
@@ -320,8 +364,8 @@ export class XlsxExtractor implements Extractor {
     return true
   }
 
-  private getUserById (userId: string): Person | undefined {
-    return this.persons[userId]
+  private getUserDisplayName (userId: string): String {
+    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
   }
 
   private dumpContentTypes () {
@@ -342,7 +386,7 @@ export class XlsxExtractor implements Extractor {
   }
 
   private dumpComment(idx: number, comment: ThreadedComment) {
-    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserById(comment.userId)?.displayName}`)
+    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)}`)
     if (comment.children) {
       console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
       comment.children.forEach(c => {

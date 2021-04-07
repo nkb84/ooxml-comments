@@ -334,8 +334,8 @@ export class PptxExtractor implements Extractor {
     return true
   }
 
-  private getUserById (userId: string): Person | undefined {
-    return this.persons[userId]
+  private getUserDisplayName (userId: string): String {
+    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
   }
 
   private dumpContentTypes () {
@@ -356,7 +356,7 @@ export class PptxExtractor implements Extractor {
   }
 
   private dumpComment(idx: number, comment: ThreadedComment) {
-    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserById(comment.userId)?.displayName}`)
+    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)}`)
     if (comment.children) {
       console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
       comment.children.forEach(c => {
