@@ -1,95 +1,31 @@
-import { Entry } from "unzipper";
 import { ThreadedComment } from "../entity/comment";
-import { ContentType, ContentTypes } from "../entity/content_type";
+import { ContentType, } from "../entity/content_type";
 import Person from "../entity/person";
 import { Relation } from "../entity/relation";
 import { Container } from "../entity/container";
 import { Parser } from "../utils/parser";
-import { CommentList, ContainerList, Extractor } from "./extractor";
+import { CommentList, ContainerList } from "./extractor";
+import { BaseExtractor } from "./base_extractor";
 
 const path = require('path')
-const fs = require('fs')
-const unziper = require('unzipper')
 
-export class PptxExtractor implements Extractor {
-  presentation?: string // workbook name
-  contentTypes: ContentTypes = new ContentTypes()
-  persons: {[key: string]: Person} = {}
-  sheets: ContainerList = {}  // map from sheet name to sheet object
-  comments: CommentList = {}
-  commentPartNameMap: {[key: string]: string} = {}  // map from comment partname to sheet name
+export class PptxExtractor extends BaseExtractor {
+  private presentation?: string // workbook name
+  private persons: {[key: string]: Person} = {}
+  private sheets: ContainerList = {}  // map from sheet name to sheet object
+  private comments: CommentList = {}
+  private commentPartNameMap: {[key: string]: string} = {}  // map from comment partname to sheet name
 
-  private contentTypesLoaded: boolean = false
   private rootRelationLoaded: boolean = false
   private presentationRelationLoaded: boolean = false
 
   private static ONS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
-  private filePath: string
   constructor (path: string) {
-    this.filePath = path
+    super(path)
   }
 
-  public getCommentList(): Promise<ThreadedComment[]> {
-    let pendingList: {[key: string]: string} = {}
-
-    return new Promise<ThreadedComment[]>(resolve => {
-      fs.createReadStream(this.filePath)
-      .pipe(unziper.Parse())
-      .on('entry', async (entry: Entry) => {
-        const data = await entry.buffer()
-        if (entry.path === '[Content_Types].xml') {
-          // Load content type
-          this.loadContentType(data.toString())
-          // console.log(`Finish loading content types`)
-          // xlsxService.dump()
-        } else {
-          const contentType = this.getContentType(entry.path)
-          if (contentType === undefined) {
-            if (this.isContentTypesLoaded()) {
-              throw new Error(`Entry ${entry.path} could not identify the content type`)
-            }
-
-            // Maybe file '[Content_Types].xml' has not been loaded, add to pending list
-            pendingList[entry.path] = data.toString()
-            // console.log(`Adding ${entry.path} to pending list`)
-          } else {
-            // console.log(`Loading ${entry.path} with: ${contentType}`)
-            if (!this.loadContent(entry.path, data.toString())) {
-              pendingList[entry.path] = data.toString()
-              // console.log(`....Adding ${entry.path} to pending list`)
-            }
-          }
-        }
-        entry.autodrain()
-      })
-      .on('finish', () => {
-        // console.log(`Pending list has ${JSON.stringify(Object.keys(pendingList))}`)
-        // Load pending data files
-        let retry = 0
-        while (retry < 10 && Object.keys(pendingList).length > 0) {
-          for (let partName in pendingList) {
-            // console.log(`Loading ${partName} from pending list`)
-            if (this.loadContent(partName, pendingList[partName])) {
-              // Remove from pending list
-              delete pendingList[partName]
-            }
-          }
-          retry ++
-        }
-
-        // Dispose pending list
-        pendingList = {}
-
-        // Update comment list
-        this.updateThreadComments()
-
-        resolve(this.adjustCommentList())
-      })
-    })
-  }
-
-  private adjustCommentList(): ThreadedComment[] {
+  adjustCommentList(): ThreadedComment[] {
     const result: ThreadedComment[] = []
     Object.values(this.sheets).forEach(s => {
       if (s.threadedComments.length > 0) {
@@ -97,39 +33,6 @@ export class PptxExtractor implements Extractor {
       }
     })
     return result
-  }
-
-  private loadContentType(content: string) {
-    const parser = Parser.getInstance()
-
-    try {
-      const doc = parser.parseFromString(content)
-      // Default
-      const defaults = doc.getElementsByTagName('Default')
-      for (let i = 0; i < defaults.length; i++) {
-        this.contentTypes.addDefault(
-                      defaults[i].getAttribute('Extension') || "",
-                      defaults[i].getAttribute('ContentType') || ""
-                    )
-      }
-
-      // Override
-      const overrides = doc.getElementsByTagName('Override')
-      for (let i = 0; i < overrides.length; i++) {
-        this.contentTypes.addOverride(
-                      overrides[i].getAttribute('PartName') || "",
-                      overrides[i].getAttribute('ContentType') || ""
-                    )
-      }
-    } catch (e) {
-      console.log(e)
-    }
-
-    this.contentTypesLoaded = true
-  }
-
-  private isContentTypesLoaded(): boolean {
-    return this.contentTypesLoaded
   }
 
   private isRootRelationLoaded(): boolean {
@@ -140,11 +43,7 @@ export class PptxExtractor implements Extractor {
     return this.presentationRelationLoaded
   }
 
-  private getContentType(partName: string): ContentType | undefined {
-    return this.contentTypes.getContentType(partName)
-  }
-
-  private loadContent(partName: string, data: string) : boolean {
+  loadContent(partName: string, data: string) : boolean {
     const contentType = this.getContentType(partName)
     if (contentType === undefined) {
       throw new Error(`Part ${partName} cannot be identified the content type`)
@@ -237,7 +136,7 @@ export class PptxExtractor implements Extractor {
     return undefined
   }
 
-  private updateThreadComments() {
+  updateThreadComments() {
     for (let id in this.comments) {
       const c = this.comments[id]
       const sname = this.getSheetNameFromCommentPart(c.partName)
@@ -336,16 +235,6 @@ export class PptxExtractor implements Extractor {
 
   private getUserDisplayName (userId: string): String {
     return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
-  }
-
-  private dumpContentTypes () {
-    this.contentTypes.defaults.forEach(d => {
-      console.log(`- Extension ${d.extension} = ${d.contentType}`)
-    })
-
-    this.contentTypes.overrides.forEach(d => {
-      console.log(`- Override ${d.partName} = ${d.contentType}`)
-    })
   }
 
   private dumpPersons() {
