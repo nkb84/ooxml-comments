@@ -1,6 +1,7 @@
 import { Entry } from "unzipper";
 import { ThreadedComment } from "../entity/comment";
 import { ContentType, ContentTypes } from "../entity/content_type";
+import Person from "../entity/person";
 import { Parser } from "../utils/index";
 import { Extractor } from "./extractor";
 const fs = require('fs')
@@ -10,6 +11,7 @@ export abstract class BaseExtractor implements Extractor {
   private contentTypes: ContentTypes = new ContentTypes()
   private contentTypesLoaded: boolean = false
   private filePath: string
+  protected persons: {[key: string]: Person} = {}
 
   constructor(path: string) {
     this.filePath = path
@@ -111,7 +113,10 @@ export abstract class BaseExtractor implements Extractor {
             .then(data => {
               this.onEntry(entry.path, data, pendingList)
             })
-            .then(() => {
+            .catch((error) => {
+              console.log(error)
+            })
+            .finally(() => {
               entry.autodrain()
             })
 
@@ -131,6 +136,17 @@ export abstract class BaseExtractor implements Extractor {
     })
   }
 
+  protected getUserDisplayName (userId: string): String {
+    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
+  }
+
+  protected dumpPersons() {
+    for (let pid in this.persons) {
+      const p = this.persons[pid]
+      console.log(`- User ${p.id} = ${p.displayName}`)
+    }
+  }
+
   protected dumpContentTypes() {
     this.contentTypes.defaults.forEach(d => {
       console.log(`- Extension ${d.extension} = ${d.contentType}`)
@@ -141,8 +157,25 @@ export abstract class BaseExtractor implements Extractor {
     })
   }
 
+  protected dumpComment(idx: number, comment: ThreadedComment) {
+    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)} ${comment.done ? "done" : ""}`)
+    if (comment.children) {
+      console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
+      comment.children.forEach(c => {
+        this.dumpComment(idx + 1, c)
+      })
+    } else {
+      console.log(`${' '.repeat(idx*2 + 2)}  ${JSON.stringify(comment.comment)}`)
+    }
+  }
+
+  dump():void {
+    this.dumpPersons()
+    this.dumpComments()
+  }
+
   abstract loadContent(partName: string, data: string): boolean
   abstract updateThreadComments(): void
   abstract adjustCommentList(): ThreadedComment[]
-  abstract dump(): void
+  abstract dumpComments():void
 }

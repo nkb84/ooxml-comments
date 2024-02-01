@@ -11,7 +11,6 @@ const path = require('path')
 
 export class PptxExtractor extends BaseExtractor {
   private presentation?: string // workbook name
-  private persons: {[key: string]: Person} = {}
   private sheets: ContainerList = {}  // map from sheet name to sheet object
   private comments: CommentList = {}
   private commentPartNameMap: {[key: string]: string} = {}  // map from comment partname to sheet name
@@ -20,6 +19,7 @@ export class PptxExtractor extends BaseExtractor {
   private presentationRelationLoaded: boolean = false
 
   private static ONS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+  private static MS = "http://schemas.microsoft.com/office/powerpoint/2018/8/main"
 
   constructor (path: string) {
     super(path)
@@ -50,9 +50,16 @@ export class PptxExtractor extends BaseExtractor {
     }
 
     switch (contentType) {
-      case ContentType.SLIDE_COMMENT_AUTHORS: return this.loadPersons(data); break;
-      case ContentType.SLIDE_COMMENTS: return this.loadComments(partName, data); break;
-      case ContentType.RELATION: return this.loadRelations(partName, data); break;
+      case ContentType.SLIDE_COMMENT_AUTHORS:
+        return this.loadPersons(data); break;
+      case ContentType.MS_SLIDE_AUTHORS:
+        return this.loadMsPersons(data); break;
+      case ContentType.SLIDE_COMMENTS:
+        return this.loadComments(partName, data); break;
+      case ContentType.MS_SLIDE_COMMENTS:
+        return this.loadMsComments(partName, data); break;
+      case ContentType.RELATION:
+        return this.loadRelations(partName, data); break;
       default:
         break;
     }
@@ -106,7 +113,7 @@ export class PptxExtractor extends BaseExtractor {
         // sheet
         const relations = doc.getElementsByTagName('Relationship')
         for (let i = 0; i < relations.length; i++) {
-          if (relations[i].getAttribute('Type') === Relation.COMMENT) {
+          if ([Relation.COMMENT, Relation.MS_COMMENT].includes(relations[i].getAttribute('Type') || '')) {
             const ttarget = (relations[i].getAttribute('Target') || "").replace('\\', '/')
             // sheet folder
             const paths = partName.split('/')
@@ -211,6 +218,70 @@ export class PptxExtractor extends BaseExtractor {
     return true
   }
 
+  private loadMsCommentReplies(parentId: string, replies: HTMLCollectionOf<Element>, partName: string, positionTxt: object): boolean {
+    for (let r = 0; r < replies.length; r++) {
+      const reply = replies[r]
+      const idr = reply.getAttribute('id') || ""
+      const bodyr = reply.getElementsByTagName('p188:txBody')
+      this.comments[idr] = new ThreadedComment(
+        idr || "",
+        "", // ref
+        reply.getAttribute('created') || "",
+        reply.getAttribute('authorId') || "",
+        parentId, // parent id
+        false,
+        bodyr[0].textContent || ""
+      )
+
+      this.comments[idr].partName = partName
+      this.comments[idr].location = JSON.stringify(positionTxt)
+    }
+    return true
+  }
+
+  private loadMsComments(partName: string, content: string): boolean {
+    const parser = Parser.getInstance()
+
+    try {
+      const doc = parser.parseFromString(content)
+      const commentList = doc.getElementsByTagName('p188:cm')
+      for (let i = 0; i < commentList.length; i++) {
+        const element = commentList[i]
+
+        // Get comment position
+        const poses = element.getElementsByTagName('p188:pos')
+        if (poses.length <= 0) {
+          throw new Error(`Comment in file ${partName} has no pos element`)
+        }
+        const positionTxt = {x: poses[0].getAttribute('x'), y: poses[0].getAttribute('y')}
+        const id = element.getAttribute('id') || ""
+        const bodies = element.getElementsByTagName('p188:txBody')
+        const body = Array.from(bodies).filter(node => node.parentNode == element)
+        this.comments[id] = new ThreadedComment(
+                      id,
+                      "", // ref
+                      element.getAttribute('created') || "",
+                      element.getAttribute('authorId') || "",
+                      "", // parent id
+                      false,
+                      body[0].textContent || ""
+                    )
+        this.comments[id].partName = partName
+        this.comments[id].location = JSON.stringify(positionTxt)
+
+        const replies = element.getElementsByTagName('p188:reply')
+        this.loadMsCommentReplies(id, replies, partName, positionTxt)
+      }
+
+      // Thread comment need to be loaded last
+      // this.updateThreadComments()
+    } catch (e) {
+      console.log(e)
+    }
+
+    return true
+  }
+
   private loadPersons(content: string): boolean {
     const parser = Parser.getInstance()
 
@@ -233,30 +304,29 @@ export class PptxExtractor extends BaseExtractor {
     return true
   }
 
-  private getUserDisplayName (userId: string): String {
-    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
-  }
+  private loadMsPersons(content: string): boolean {
+    const parser = Parser.getInstance()
 
-  private dumpPersons() {
-    for (let pid in this.persons) {
-      const p = this.persons[pid]
-      console.log(`- User ${p.id} = ${p.displayName}`)
+    try {
+      const doc = parser.parseFromString(content)
+      const personList = doc.getElementsByTagName('p188:author')
+      for (let i = 0; i < personList.length; i++) {
+        const element = personList[i]
+        const id = element.getAttribute('id') || ""
+        this.persons[id] = new Person(
+                      element.getAttribute('name') || "",
+                      element.getAttribute('id') || "",
+                      element.getAttribute('providerId') || ""
+                  )
+      }
+    } catch (e) {
+      console.log(e)
     }
+
+    return true
   }
 
-  private dumpComment(idx: number, comment: ThreadedComment) {
-    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)}`)
-    if (comment.children) {
-      console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
-      comment.children.forEach(c => {
-        this.dumpComment(idx + 1, c)
-      })
-    } else {
-      console.log(`${' '.repeat(idx*2 + 2)}  ${JSON.stringify(comment.comment)}`)
-    }
-  }
-
-  private dumpComments() {
+  dumpComments() {
     for (let sid in this.sheets) {
       let sheet = this.sheets[sid]
       if (sheet.threadedComments.length === 0) {
@@ -267,10 +337,5 @@ export class PptxExtractor extends BaseExtractor {
         this.dumpComment(1, c)
       })
     }
-  }
-
-  public dump(): void {
-    this.dumpPersons()
-    this.dumpComments()
   }
 }

@@ -11,6 +11,7 @@ export class Relation {
   public static SHARED_STRINGS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"
   public static THREADED_COMMENT = "http://schemas.microsoft.com/office/2017/10/relationships/threadedComment"
   public static COMMENT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+  public static MS_COMMENT = "http://schemas.microsoft.com/office/2018/10/relationships/comments"
   public static COMMENT_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
   public static COMMENT_IDS = "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds"
   public static COMMENT_EXTENSIBLE = "http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible"

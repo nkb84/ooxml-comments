@@ -11,7 +11,6 @@ const path = require('path')
 
 export class XlsxExtractor extends BaseExtractor {
   private workbook?: string // workbook name
-  private persons: {[key: string]: Person} = {}
   private sheets: ContainerList = {}  // map from sheet name to sheet object
   private comments: CommentList = {}
   private commentPartNameMap: {[key: string]: string} = {}  // map from comment partname to sheet name
@@ -263,30 +262,7 @@ export class XlsxExtractor extends BaseExtractor {
     return true
   }
 
-  private getUserDisplayName (userId: string): String {
-    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
-  }
-
-  private dumpPersons() {
-    for (let pid in this.persons) {
-      const p = this.persons[pid]
-      console.log(`- User ${p.id} = ${p.displayName}`)
-    }
-  }
-
-  private dumpComment(idx: number, comment: ThreadedComment) {
-    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)}`)
-    if (comment.children) {
-      console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
-      comment.children.forEach(c => {
-        this.dumpComment(idx + 1, c)
-      })
-    } else {
-      console.log(`${' '.repeat(idx*2 + 2)}  ${JSON.stringify(comment.comment)}`)
-    }
-  }
-
-  private dumpComments() {
+  dumpComments() {
     for (let sid in this.sheets) {
       let sheet = this.sheets[sid]
       if (sheet.threadedComments.length === 0) {
@@ -298,10 +274,5 @@ export class XlsxExtractor extends BaseExtractor {
         this.dumpComment(1, c)
       })
     }
-  }
-
-  public dump():void {
-    this.dumpPersons()
-    this.dumpComments()
   }
 }

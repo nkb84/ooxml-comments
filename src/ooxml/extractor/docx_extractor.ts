@@ -16,7 +16,6 @@ export class DocxExtractor extends BaseExtractor {
   private document?: string // workbook name
   private commentPart?: string // comment part
   private commentExtenedPart?: string // extended part
-  private persons: {[key: string]: Person} = {}
   private threadedComments: ThreadedComment[] = []
   private comments: CommentList = {}
   private commentDetails: {[key: string]: string} = {}
@@ -330,37 +329,9 @@ export class DocxExtractor extends BaseExtractor {
     return true
   }
 
-  private getUserDisplayName (userId: string): String {
-    return this.persons.hasOwnProperty(userId) ? this.persons[userId].displayName : userId
-  }
-
-  private dumpPersons() {
-    for (let pid in this.persons) {
-      const p = this.persons[pid]
-      console.log(`- User ${p.id} = ${p.displayName}`)
-    }
-  }
-
-  private dumpComment(idx: number, comment: ThreadedComment) {
-    console.log(`${' '.repeat(idx*2)}- Comment ${comment.id}: ${comment.ref} at ${comment.time} by ${this.getUserDisplayName(comment.userId)} ${comment.done ? "done" : ""}`)
-    if (comment.children) {
-      console.log(`${' '.repeat(idx*2 + 2)}| ${JSON.stringify(comment.comment)}`)
-      comment.children.forEach(c => {
-        this.dumpComment(idx + 1, c)
-      })
-    } else {
-      console.log(`${' '.repeat(idx*2 + 2)}  ${JSON.stringify(comment.comment)}`)
-    }
-  }
-
-  private dumpComments() {
+  dumpComments() {
     this.threadedComments.forEach(c => {
       this.dumpComment(1, c)
     })
-  }
-
-  public dump():void {
-    this.dumpPersons()
-    this.dumpComments()
   }
 }

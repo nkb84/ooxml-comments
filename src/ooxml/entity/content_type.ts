@@ -39,6 +39,8 @@ export enum ContentType {
   SLIDE_LAYOUT = "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml",
   NODES_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
   SLIDE_COMMENTS = "application/vnd.openxmlformats-officedocument.presentationml.comments+xml",
+  MS_SLIDE_COMMENTS = "application/vnd.ms-powerpoint.comments+xml",
+  MS_SLIDE_AUTHORS = "application/vnd.ms-powerpoint.authors+xml"
 }
 
 interface Default {

@@ -14,7 +14,7 @@ export class ThreadedComment {
     this.id = id
     this.ref = ref
     const d = new Date(time)
-    this.time = [d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-')
+    this.time = d.toISOString() // [d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-')
     this.userId = userId
     this.parentId = parentId
     this.done = done
